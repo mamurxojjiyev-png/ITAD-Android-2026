@@ -1,0 +1,10 @@
+const fs=require('fs'), vm=require('vm'),assert=require('assert'),path=require('path');
+const dir=path.join(__dirname,'..','www');
+let store={}; const localStorage={getItem:k=>store[k]??null,setItem:(k,v)=>store[k]=String(v),removeItem:k=>delete store[k]};
+const context=vm.createContext({localStorage,console,window:{},document:{querySelector:()=>null},alert:()=>{},Date,Math,JSON,URL,AbortController,setTimeout,clearTimeout,structuredClone,fetch:async()=>{throw Error('network is unavailable')}});
+const files=['questionbank.js','gamification.js','textbook.js','cloud.js'];
+for(const f of files)vm.runInContext(fs.readFileSync(path.join(dir,f),'utf8'),context,{filename:f});
+vm.runInContext(`if(!QB.maruza||!QB.amaliy||!QB.laboratoriya)throw Error('Savollar yo‘q'); for(const t of ['maruza','amaliy','laboratoriya']){if(QB[t].length<10)throw Error('Kam savol');for(const v of QB[t]) if(!Array.isArray(v)||v.length!==5||v.some(x=>typeof x!=='string'||!x.trim()))throw Error('Savol xatosi')} if(!G||!Cloud||!window.ITAD_BOOK)throw Error('Modul topilmadi'); if(Object.keys(window.ITAD_BOOK).length<10)throw Error('Konspektlar yetarli emas');if(Cloud.status().ready)throw Error('Soxta server ulanib qolgan');`,context);
+for(const file of ['app.js','racing.js'])new (require('vm').Script)(fs.readFileSync(path.join(dir,file),'utf8'),{filename:file});
+const index=fs.readFileSync(path.join(dir,'index.html'),'utf8');for(const f of ['questionbank.js','gamification.js','textbook.js','cloud.js','app.js'])assert(index.includes(`src="${f}"`),`HTML script missing: ${f}`);
+console.log('PASS: savollar, darslik moduli, o‘yin moduli, bulut moduli va HTML yuklash yozuvlari.');
