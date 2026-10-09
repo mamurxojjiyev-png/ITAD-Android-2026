@@ -1,48 +1,98 @@
+
 name: ITAD Android APK
+
 on:
   workflow_dispatch:
   push:
     branches: [main, master]
+
 permissions:
   contents: read
+
 jobs:
   apk:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
-      - uses: android-actions/setup-android@v3
+
       - name: Install Android 36 SDK packages
+        shell: bash
         run: |
-          yes | sdkmanager --licenses > /dev/null || true
-          sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+          set -euo pipefail
+
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+
+          if [ -z "$SDK_ROOT" ]; then
+            echo "::error::Android SDK topilmadi"
+            exit 1
+          fi
+
+          SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER=$(find "$SDK_ROOT/cmdline-tools" -name sdkmanager -type f | head -n 1)
+          fi
+
+          if [ -z "$SDKMANAGER" ] || [ ! -f "$SDKMANAGER" ]; then
+            echo "::error::sdkmanager topilmadi"
+            exit 1
+          fi
+
+          "$SDKMANAGER" --sdk_root="$SDK_ROOT" \
+            "platform-tools" \
+            "platforms;android-36" \
+            "build-tools;36.0.0"
+
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+
       - name: Install dependencies
-        run: npm install --no-audit --no-fund --package-lock=true
+        run: npm install --no-audit --no-fund
+
       - name: Check Javascript files
-        run: for f in www/*.js; do node --check "$f"; done
+        shell: bash
+        run: |
+          set -e
+          for f in www/*.js; do
+            node --check "$f"
+          done
+
       - name: Run regression tests
         run: npm test
+
       - name: Create Android application
         run: npx cap add android
+
       - name: Sync Android application
         run: npx cap sync android
+
       - name: Set Android API 36 target
-        run: |
-          python3 scripts/set_target_api.py android
+        run: python3 scripts/set_target_api.py android
+
       - name: Build installable APK
-        run: cd android && chmod +x gradlew && ./gradlew --no-daemon assembleDebug
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleDebug
+
       - name: Verify APK is generated
         run: test -s android/app/build/outputs/apk/debug/app-debug.apk
+
       - name: Downloadable phone APK
         uses: actions/upload-artifact@v4
         with:
           name: ITAD-TELEFON-APK
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+          retention-days: 30
